@@ -1,0 +1,250 @@
+#!/usr/bin/python3
+
+import re
+import os
+import click
+import subprocess
+import requests
+import json 
+import time
+def printlog(log):
+    print('\n')
+    print(log)
+    print('\n')
+
+def compare(ImageName,fingerprint):
+    url = 'https://ylfx2fc5jh.execute-api.us-east-1.amazonaws.com/test/compare'
+    payload = {
+        "ImageName" : str(ImageName),
+        "Lib" : fingerprint['lib'],
+        "Bin" : fingerprint['bin'],
+        "Dmidecode" :fingerprint['dmidecode']
+              }
+    print(payload)
+
+    req = requests.post(url, json = (payload) )
+    printlog(req.text)
+    return req.json()
+
+def log(ImageName,Status, Title, Message):
+    url = 'https://ylfx2fc5jh.execute-api.us-east-1.amazonaws.com/test/publishlog'
+    payload = {
+        "ImageName" : str(ImageName),
+	"Status" : Status,
+	"Title" : Title,
+	"Message" : Message
+              }
+    print(payload)
+
+    req = requests.post(url, json = (payload) )
+    printlog(req.text)
+    return req.json()
+@click.group()
+def cli():
+    pass
+
+def fingerprint():
+    listoffolders = [ 'lib','bin']
+    result = {}
+    for folder in listoffolders:
+        batcmd="echo -n /{} | sha256sum".format(folder)
+        output = subprocess.check_output([batcmd], shell=True).decode("utf-8").replace('  -\n','')
+
+        result['{}'.format(folder)] = output 
+    result['dmidecode'] = subprocess.check_output(['sudo dmidecode | sha256sum'],shell=True).decode("utf-8").replace('  -\n','')
+    return (result)
+
+'''
+@click.command()
+@click.option('--count', default=1)
+def test(count):
+	click.echo('Count: %d' % count)
+
+@click.command()
+@click.option('--count', default=1)
+@click.pass_context
+def dist(ctx, count):
+	ctx.forward(test)
+	ctx.invoke(test, count=42)
+	ctx.invoke(fprintf, hash="asdfds")
+
+'''
+@click.command()
+@click.argument('name')
+@click.argument('hash')
+@click.argument('passphrase')
+def fromapi(name,hash,passphrase):
+
+	batcmd="curl 3.21.53.35:8181/v1/data/example/rules/allow -d '{\"input\": {\"container_name\":\""+name+"\",\"container_hashvalue\":\""+hash+"\",\"container_passphrase\": \""+passphrase+"\"}}'"
+
+	result = subprocess.check_output([batcmd], shell=True).decode('utf-8')
+	result=json.loads(result)
+	return (result["result"])
+
+
+@click.command()
+#@click.option('--writable-tmpfs',is_flag=True)
+@click.option('--net', is_flag=True)
+@click.option('--network-args')
+@click.argument('sif')
+@click.option('--instancename')
+def start(net,network_args,sif,instancename):
+# Fingerprint the environment 
+    printlog("Starting the procedure...")
+    req = log(str(sif),True,'Initiating procedure' ,"Procedure to run a container with the {} image started".format(sif))
+
+    Pass = False
+    try:
+        printlog("Fingerprinting the environment")
+        req = log(str(sif),True,'Fingerprinting the environment',"Fingerprinting the environment for security assesment" )
+
+        response = fingerprint()
+        printlog("Fingerprint successful with the following values : {}".format(response))
+        req = log(str(sif),True,'Fingerprint Successful' ,"{}".format(response))
+    except Exception as e:
+        req = log(str(sif),True,'Fingerprint procedure failed' ,"")
+
+        click.echo('Command failed, try again')
+        printlog(e)
+        exit()
+# Send the  params to OPA
+
+    try:
+        printlog("Sending fingerprint payload to OPA Engine")
+        req = log(str(sif),True,'Payload sent to OPA' ,"Sending fingerprint payload to OPA Engine")
+
+        result = (compare(sif,response))
+        if(result['body'] != None):
+            req = log(str(sif),True,'Environment Validated' ,"The environment matches the requisite threshold of OPA")
+
+
+            printlog("Environment validated by OPA")
+    except Exception as e:
+        req = log(str(sif),False,'OPA procedure failed' ,"Reason for failure : {}".format(str(e)))
+
+        click.echo('Command failed, try again')
+        exit()
+# Run the command 
+    if(True):
+        try:
+            os.system('cp original/index.html nginx/index.html')
+            os.system('SINGULARITY_ENCRYPTION_PASSPHRASE="{}" singularity instance start --writable-tmpfs --net -B nginx:/usr/share/nginx/html --network-args {} {} {}'.format(result,network_args,sif,instancename))
+            log(str(sif),True,"Container start procedure Succeeded", "Container web1 is successfully running.")
+        except Exception as e:
+            req = log(str(sif),False,"Container start procedure failed", "Reason for failure : {}".format(str(e)))
+
+@click.command()
+def instancelist():
+	click.echo('Printing Instance list...')
+	os.system('singularity instance list')
+
+
+@click.command()
+@click.argument('iname')
+@click.argument('command')
+@click.pass_context
+def execute(ctx,iname,command):
+	#iname='instance://web'
+	#command='nginx'
+	click.echo('Executing image..')
+	os.system('sudo singularity exec instance://{} {} '.format(iname,command))
+	
+	batcmd="sha256sum /home/ubuntu/text.txt"
+	result = subprocess.check_output([batcmd], shell=True)
+	outf = {'{}'.format(command): result.strip()}
+	print(outf)
+	print("nginx server running .... ")
+
+	while(1):
+		if(ctx.invoke(fprintf, command=command, hash=outf) == outf):
+			pass;
+		else:
+			print("hash mis-matched, server stop command issued.")
+			os.system('sudo singularity instance stop {}'.format(iname))
+			break;
+
+
+@click.command()
+@click.option('--command', default='command')
+@click.option('--hash',default ='hash')
+def fprintf(command,hash):
+	batcmd="sha256sum /home/ubuntu/text.txt"
+	result = subprocess.check_output([batcmd], shell=True)
+	outf = {'{}'.format(command): result.strip()}
+	return outf
+
+
+@click.command()
+@click.option('--iname')
+def watch(iname):
+    batcmd="cat nginx/index.html | sha256sum"
+    output = subprocess.check_output([batcmd], shell=True).decode("utf-8").replace('  -\n','')
+    flag= True
+    log(str('/home/ubuntu/nginx.sif'),True,"Container compliance  procedure started", " Container compliance underway")
+    while(flag):
+        newop = subprocess.check_output([batcmd], shell=True).decode("utf-8").replace('  -\n','')
+        time.sleep(2)
+        print("Container is Compliant")
+        log('/home/ubuntu/nginx.sif',True,"Container compliant","Container compliant")
+        if(newop != output):
+            flag=False
+            print("Container non compliance detected")
+            
+            log('/home/ubuntu/nginx.sif',False,"Container non-compliance detected","Container non-compliance detected in index.html")
+            log('/home/ubuntu/nginx.sif',False,"Awaiting user action","")
+    if click.confirm('Do you want to restart the containter??'):
+        print("Restarting container")
+        log('/home/ubuntu/nginx.sif',True,"Container restart command recieved","Received input from the user to restart the container")
+        os.system("cp original/index.html nginx/index.html")
+        print("Container Restarted")
+        log('/home/ubuntu/nginx.sif',True,"Container is compliant","Container is back to complaince state after restart")
+
+@click.command()
+@click.argument('image')
+#@click.option('--json', help='display in json format')
+#@click.argument('image')
+#@click.option('-l', help='labels')
+def inspect(image):
+	click.echo('Inspecting image..')
+	os.system('SINGULARITY_ENCRYPTION_PASSPHRASE="secret" singularity inspect -l --json {}'.format(image))
+
+
+@click.command()
+def attack():
+	click.echo('Running the command')
+	os.system('cp original/hacked.html nginx/index.html')
+
+
+@click.command()
+@click.argument('image')
+def pull(image):
+    click.echo('Pulling image {}...'.format(image))
+    os.system('singularity pull {}'.format(image))
+
+
+@click.command()
+@click.argument('instancename')
+def stop(instancename):
+	click.echo('Stopping image..')
+	os.system('sudo singularity instance stop {}'.format(instancename))
+
+
+
+#cli.add_command(test)
+#cli.add_command(dist)
+
+cli.add_command(fromapi)
+cli.add_command(watch)
+cli.add_command(attack)
+cli.add_command(fprintf)
+cli.add_command(stop)
+cli.add_command(execute)
+cli.add_command(main)
+cli.add_command(instancelist)
+cli.add_command(pull)
+cli.add_command(start)
+cli.add_command(inspect)
+if __name__ == "__main__":
+    cli()
+
+

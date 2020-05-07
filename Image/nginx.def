@@ -1,0 +1,8 @@
+Bootstrap: docker
+From: nginx
+Includecmd: no
+
+
+%startscript
+	nginx
+

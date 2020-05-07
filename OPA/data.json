@@ -1,0 +1,2 @@
+{ "container": [ { "container_name" : "nginx.sif", "container_hashvalue" : "734e5bb24f61122040d4d0f5084e296c4df017159799cece3cb 3d927a66c7d57", "container_passphrase" : "secret" }, { "container_name" : "lolcow.sif", "container_hashvalue" : "734e5bb24f61122040d4d0f5084e296c4df017159799cece3cb 3d927a66c7d57", "container_passphrase" : "secret_lolcow" } ] }
+
