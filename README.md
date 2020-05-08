@@ -21,7 +21,7 @@ sudo supervisor start  --network-args "portmap=8000:80/tcp" /home/ubuntu/nginx.s
 
 ## Development setup
 
-Install [OPA](https://www.openpolicyagent.org/)  and [Singularity](https://singularity.lbl.gov/) 
+Install [OPA](https://www.openpolicyagent.org/) and [Singularity](https://github.com/sylabs/singularity/blob/master/INSTALL.md).
 
 Copy the supervisor to /usr/bin/share and ensure it exists on the path variable.
 ```sh
